@@ -1,7 +1,7 @@
 # Databricks notebook source
 # /// script
 # [tool.databricks.environment]
-# environment_version = "1"
+# environment_version = "4"
 # ///
 # MAGIC %md
 # MAGIC # 01 — Generate Synthetic German Insurance Data
@@ -11,7 +11,7 @@
 
 from pyspark.sql import functions as F
 
-DATA_MODE = "test"
+DATA_MODE = "small"
 
 sizes = {
     "test": {"customers": 10, "policies": 250, "claims": 500, "payments": 500, "agents": 10, "fraud_indicators": 500, "partitions": 8},    
@@ -139,11 +139,6 @@ display(customers_df.limit(10))
 
 # COMMAND ----------
 
-S3_BUCKET = "s3://databricks-sfjvkaqmnimrsa4tfyg8cs-cloud-storage-bucket"
-RAW_BASE_PATH = f"{S3_BUCKET}/raw"
-DATA_MODE = "small"
-PARTITIONS = 8 if DATA_MODE == "small" else 128
-
 datasets = {
     "customers": spark.table("tmp_customers"),
     "policies": spark.table("tmp_policies"),
@@ -153,13 +148,7 @@ datasets = {
     "fraud_indicators": spark.table("tmp_fraud_indicators"),
 }
 
+# write to bronze as managed Delta tables (lands in S3 internally)
 for name, df in datasets.items():
-    target_path = f"{RAW_BASE_PATH}/{name}"
-    print("Writing", name, "to", target_path)
-    df.repartition(PARTITIONS).write.mode("overwrite").option("header", True).csv(target_path)
-
-raw_counts = []
-for name in datasets:
-    count_value = spark.read.option("header", True).csv(f"{RAW_BASE_PATH}/{name}").count()
-    raw_counts.append((name, count_value))
-display(spark.createDataFrame(raw_counts, ["dataset", "raw_count"]))
+    df.write.mode("overwrite").saveAsTable(f"insurance_lakehouse.bronze.raw_{name}")
+    print(f"Written raw_{name}")

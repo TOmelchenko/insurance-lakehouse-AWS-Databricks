@@ -7,7 +7,7 @@
 from pyspark.sql import functions as F
 import uuid
 
-S3_BUCKET = "s3://insurance-lakehouse-project-<replace-with-your-name>"
+S3_BUCKET = "s3://databricks-sfjvkaqmnimrsa4tfyg8cs-cloud-storage-bucket"
 RAW_BASE_PATH = f"{S3_BUCKET}/raw"
 CATALOG_NAME = "insurance_lakehouse"
 BRONZE_SCHEMA = "bronze"
@@ -40,4 +40,3 @@ print("Bronze count:", bronze_count)
 print("Status:", "PASS" if raw_count == bronze_count else "FAIL")
 
 display(spark.table(BRONZE_TABLE).limit(10))
-
