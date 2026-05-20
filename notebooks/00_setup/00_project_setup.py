@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "4"
+# ///
 # MAGIC %md
 # MAGIC # 00 — Project Setup
 # MAGIC Configure project paths, data mode, and schemas.
@@ -9,7 +13,7 @@ PROJECT_NAME = "insurance-lakehouse-databricks-aws"
 COMPANY_NAME = "Rheinland Versicherung AG"
 DATA_MODE = "small"
 
-S3_BUCKET = "s3://insurance-lakehouse-project-tomelchenko"
+S3_BUCKET = "s3://databricks-sfjvkaqmnimrsa4tfyg8cs-cloud-storage-bucket"
 RAW_BASE_PATH = f"{S3_BUCKET}/raw"
 CHECKPOINTS_PATH = f"{S3_BUCKET}/checkpoints"
 

@@ -11,9 +11,10 @@
 
 from pyspark.sql import functions as F
 
-DATA_MODE = "small"
+DATA_MODE = "test"
 
 sizes = {
+    "test": {"customers": 10, "policies": 250, "claims": 500, "payments": 500, "agents": 10, "fraud_indicators": 500, "partitions": 8},    
     "small": {"customers": 10000, "policies": 25000, "claims": 50000, "payments": 50000, "agents": 1000, "fraud_indicators": 50000, "partitions": 8},
     "medium": {"customers": 500000, "policies": 1500000, "claims": 5000000, "payments": 5000000, "agents": 10000, "fraud_indicators": 5000000, "partitions": 128},
     "large": {"customers": 2000000, "policies": 5000000, "claims": 20000000, "payments": 20000000, "agents": 25000, "fraud_indicators": 20000000, "partitions": 512}
@@ -138,7 +139,6 @@ display(customers_df.limit(10))
 
 # COMMAND ----------
 
-#S3_BUCKET = "s3://insurance-lakehouse-project-tomelchenko"
 S3_BUCKET = "s3://databricks-sfjvkaqmnimrsa4tfyg8cs-cloud-storage-bucket"
 RAW_BASE_PATH = f"{S3_BUCKET}/raw"
 DATA_MODE = "small"
