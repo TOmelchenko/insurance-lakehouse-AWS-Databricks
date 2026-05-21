@@ -1,0 +1,206 @@
+# PII Handling and Data Governance
+## Insurance Lakehouse - AWS Databricks Project
+
+---
+
+## Overview
+
+This project processes personal data for German insurance customers and falls under GDPR (EU 2016/679). The pipeline uses a bronze-silver-gold medallion architecture on Databricks Unity Catalog with AWS S3 as the underlying storage layer. PII handling, field masking, and consent enforcement are applied at the silver layer - raw data never leaves the bronze layer in an unmasked state.
+
+---
+
+## PII Fields by Dataset
+
+### Customers
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `email` | Direct identifier | HIGH | Hashed (SHA-256), original dropped at silver |
+| `phone_number` | Direct identifier | HIGH | Hashed (SHA-256), original dropped at silver |
+| `street` | Direct identifier | HIGH | Dropped at silver |
+| `date_of_birth` | Quasi-identifier | MEDIUM | Retained, used to derive `customer_age` |
+| `customer_id` | Internal identifier | LOW | Hashed for traceability |
+| `city` | Quasi-identifier | LOW | Retained, normalized |
+| `bundesland` | Quasi-identifier | LOW | Retained |
+| `gdpr_consent` | Consent flag | HIGH | Required - records without consent are quarantined |
+
+### Policies
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `policy_id` | Internal identifier | LOW | Hashed for traceability |
+| `customer_id` | Foreign key to PII | MEDIUM | Retained for joins |
+| `premium_amount` | Financial data | MEDIUM | Retained |
+| `coverage_amount` | Financial data | MEDIUM | Retained |
+
+### Claims
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `customer_id` | Foreign key to PII | MEDIUM | Retained for joins |
+| `claim_description` | Free text, may contain PII | MEDIUM | Retained, flagged for manual review |
+| `fraud_flag` | Sensitive classification | HIGH | Retained, access restricted |
+
+### Payments
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `iban_hash` | Financial identifier | HIGH | Pre-hashed at source generation |
+| `payment_amount` | Financial data | MEDIUM | Retained |
+
+### Agents
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `agent_name` | Direct identifier | MEDIUM | Retained, normalized |
+| `commission_rate` | Financial data | MEDIUM | Retained |
+
+### Fraud Indicators
+
+| Field | PII Type | Sensitivity | Treatment |
+|---|---|---|---|
+| `risk_score` | Derived classification | HIGH | Retained, access restricted |
+| `risk_category` | Derived classification | HIGH | Derived at silver (HIGH/MEDIUM/LOW) |
+
+---
+
+## Hashing Strategy
+
+All hashing uses **SHA-256** via `F.sha2(col, 256)`. This is a one-way hash - original values cannot be recovered.
+
+```python
+# applied at silver layer for customers
+.withColumn("customer_hash", F.sha2(F.col("customer_id").cast("string"), 256))
+.withColumn("email_hash",    F.sha2(F.lower(F.trim(F.col("email"))), 256))
+.withColumn("phone_hash",    F.sha2(F.trim(F.col("phone_number")), 256))
+```
+
+**Normalisation before hashing:** email is lowercased and trimmed, phone is trimmed. This ensures the same input always produces the same hash regardless of formatting differences.
+
+**What is hashed vs dropped:**
+
+- Hashed: fields needed for traceability or joining (`customer_id`, `email`, `phone_number`)
+- Dropped entirely: fields with no analytical value after masking (`street`)
+
+---
+
+## Masking and Field Removal
+
+At the silver layer, the following fields are permanently removed from the `silver_customers` table:
+
+```python
+.drop("email", "phone_number", "street")
+```
+
+These fields remain in `bronze_customers` which is access-restricted. Analysts working on silver and gold layers never see raw PII.
+
+---
+
+## Consent-Aware Analytics
+
+GDPR consent is enforced at the silver ingestion step. Any customer record where `gdpr_consent` is `NULL` or `FALSE` is routed to quarantine and excluded from all downstream analytics.
+
+```python
+# only consenting customers reach silver
+valid_customers = customers_prepared.filter(
+    F.col("customer_id").isNotNull() &
+    F.col("gdpr_consent").isNotNull()
+)
+```
+
+This means:
+- Gold layer aggregations only include consenting customers
+- Fraud scoring, claim analytics, and agent reporting are all consent-gated through the customer join
+- Non-consenting records are preserved in quarantine for audit purposes but never used in reporting
+
+---
+
+## Role-Based Access Design
+
+Unity Catalog enforces access at the schema level. Three access tiers are defined:
+
+### Tier 1 - Bronze (restricted)
+- Contains raw, unmasked PII
+- Access: data engineers only
+- Purpose: debugging, reprocessing, audit trail
+
+```sql
+GRANT SELECT ON SCHEMA insurance_lakehouse.bronze TO `data-engineers`;
+```
+
+### Tier 2 - Silver (internal analysts)
+- PII hashed or dropped
+- Access: data analysts, data scientists
+- Purpose: building models, segmentation, reporting
+
+```sql
+GRANT SELECT ON SCHEMA insurance_lakehouse.silver TO `data-analysts`;
+GRANT SELECT ON SCHEMA insurance_lakehouse.silver TO `data-scientists`;
+```
+
+### Tier 3 - Gold (business users)
+- Aggregated, no individual-level PII
+- Access: business stakeholders, BI tools
+- Purpose: dashboards, KPIs, executive reporting
+
+```sql
+GRANT SELECT ON SCHEMA insurance_lakehouse.gold TO `business-users`;
+```
+
+### Quarantine (audit only)
+- Contains rejected records with error metadata
+- Access: data engineers and compliance team only
+
+```sql
+GRANT SELECT ON SCHEMA insurance_lakehouse.quarantine TO `data-engineers`;
+GRANT SELECT ON SCHEMA insurance_lakehouse.quarantine TO `compliance-team`;
+```
+
+---
+
+## Audit Metadata
+
+Every bronze and silver table carries three audit columns added at ingestion time:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `ingest_timestamp` | timestamp | When the record was ingested |
+| `ingest_run_id` | string (UUID) | Links all records from the same pipeline run |
+| `source_file_name` | string | Source table or file path |
+
+These columns support GDPR Article 30 (records of processing activities) and make it possible to trace any record back to its origin.
+
+---
+
+## Quarantine and Error Handling
+
+Invalid records are never silently dropped. They are routed to dedicated quarantine tables with full error context:
+
+| Column | Purpose |
+|---|---|
+| `record_id` | Primary key of the rejected record |
+| `source_table` | Which bronze table it came from |
+| `error_reason` | Specific validation failure |
+| `error_severity` | HIGH / MEDIUM / LOW |
+| `quarantine_timestamp` | When it was quarantined |
+| `original_record_json` | Full original record as JSON for audit |
+
+Error categories include:
+- `missing_customer_id` - record cannot be linked to a customer
+- `invalid_gdpr_consent` - consent not confirmed, GDPR requirement
+- `invalid_premium_amount` - negative or null financial value
+- `missing_claim_date` - incomplete claim record
+- `invalid_risk_score` - score outside 0-100 range
+
+---
+
+## GDPR Compliance Summary
+
+| GDPR Requirement | Implementation |
+|---|---|
+| Article 5 - Data minimisation | PII fields dropped or hashed at silver layer |
+| Article 6 - Lawful basis | `gdpr_consent` field enforced before analytics |
+| Article 25 - Privacy by design | Masking applied at pipeline level, not ad hoc |
+| Article 30 - Records of processing | Audit metadata on every table |
+| Article 32 - Security | Unity Catalog role-based access, no raw PII in analytics layer |
+| Article 17 - Right to erasure | Records traceable via `customer_hash` and `ingest_run_id` |
