@@ -10,6 +10,9 @@ bronze_table = f"{CATALOG}.{BRONZE_SCHEMA}.bronze_claims"
 silver_table = f"{CATALOG}.{SILVER_SCHEMA}.silver_claims"
 quarantine_table = f"{CATALOG}.{QUARANTINE_SCHEMA}.quarantine_invalid_claims"
 
+# valid values from quality_rules.yml
+VALID_CLAIM_STATUS = ["open", "approved", "rejected", "under_review", "paid"]
+
 claims_bronze = spark.table(bronze_table)
 
 claims_prepared = (
@@ -18,7 +21,7 @@ claims_prepared = (
     .withColumn("policy_id", F.trim(F.col("policy_id")))
     .withColumn("customer_id", F.trim(F.col("customer_id")))
     .withColumn("claim_type", F.trim(F.col("claim_type")))
-    .withColumn("claim_status", F.trim(F.col("claim_status")))
+    .withColumn("claim_status", F.lower(F.trim(F.col("claim_status"))))
     .withColumn("reported_channel", F.trim(F.col("reported_channel")))
     .withColumn("claim_description", F.trim(F.col("claim_description")))
     .withColumn("claim_hash", F.sha2(F.col("claim_id").cast("string"), 256))
@@ -32,7 +35,8 @@ invalid_claims = (
         F.col("customer_id").isNull() |
         F.col("claim_amount").isNull() |
         (F.col("claim_amount") < 0) |
-        F.col("claim_date").isNull()
+        F.col("claim_date").isNull() |
+        ~F.col("claim_status").isin(VALID_CLAIM_STATUS)
     )
     .withColumn("record_id", F.col("claim_id"))
     .withColumn("source_table", F.lit("bronze_claims"))
@@ -43,6 +47,7 @@ invalid_claims = (
          .when(F.col("customer_id").isNull(), F.lit("missing_customer_id"))
          .when(F.col("claim_amount").isNull() | (F.col("claim_amount") < 0), F.lit("invalid_claim_amount"))
          .when(F.col("claim_date").isNull(), F.lit("missing_claim_date"))
+         .when(~F.col("claim_status").isin(VALID_CLAIM_STATUS), F.lit("invalid_claim_status"))
          .otherwise(F.lit("unknown_claim_error"))
     )
     .withColumn("error_severity", F.lit("HIGH"))
@@ -58,7 +63,8 @@ valid_claims = (
         F.col("customer_id").isNotNull() &
         F.col("claim_amount").isNotNull() &
         (F.col("claim_amount") >= 0) &
-        F.col("claim_date").isNotNull()
+        F.col("claim_date").isNotNull() &
+        F.col("claim_status").isin(VALID_CLAIM_STATUS)
     )
     .dropDuplicates(["claim_id"])
 )

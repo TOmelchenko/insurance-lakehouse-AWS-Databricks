@@ -10,16 +10,23 @@ bronze_table = f"{CATALOG}.{BRONZE_SCHEMA}.bronze_payments"
 silver_table = f"{CATALOG}.{SILVER_SCHEMA}.silver_payments"
 quarantine_table = f"{CATALOG}.{QUARANTINE_SCHEMA}.quarantine_invalid_payments"
 
+# valid values from quality_rules.yml
+VALID_PAYMENT_STATUS = ["paid", "pending", "rejected"]
+VALID_PAYMENT_METHOD = ["SEPA", "bank_transfer", "card"]
+
 payments_bronze = spark.table(bronze_table)
 
 payments_prepared = (
     payments_bronze
     .withColumn("payment_id", F.trim(F.col("payment_id")))
     .withColumn("claim_id", F.trim(F.col("claim_id")))
-    .withColumn("payment_status", F.trim(F.col("payment_status")))
+    .withColumn("payment_status", F.lower(F.trim(F.col("payment_status"))))
     .withColumn("payment_method", F.trim(F.col("payment_method")))
     .withColumn("payment_hash", F.sha2(F.col("payment_id").cast("string"), 256))
 )
+
+# valid values lists lowercased for payment_status comparison
+VALID_PAYMENT_STATUS_LOWER = [s.lower() for s in VALID_PAYMENT_STATUS]
 
 invalid_payments = (
     payments_prepared
@@ -28,7 +35,9 @@ invalid_payments = (
         F.col("claim_id").isNull() |
         F.col("payment_amount").isNull() |
         (F.col("payment_amount") < 0) |
-        F.col("payment_date").isNull()
+        F.col("payment_date").isNull() |
+        ~F.col("payment_status").isin(VALID_PAYMENT_STATUS_LOWER) |
+        ~F.col("payment_method").isin(VALID_PAYMENT_METHOD)
     )
     .withColumn("record_id", F.col("payment_id"))
     .withColumn("source_table", F.lit("bronze_payments"))
@@ -38,6 +47,8 @@ invalid_payments = (
          .when(F.col("claim_id").isNull(), F.lit("missing_claim_id"))
          .when(F.col("payment_amount").isNull() | (F.col("payment_amount") < 0), F.lit("invalid_payment_amount"))
          .when(F.col("payment_date").isNull(), F.lit("missing_payment_date"))
+         .when(~F.col("payment_status").isin(VALID_PAYMENT_STATUS_LOWER), F.lit("invalid_payment_status"))
+         .when(~F.col("payment_method").isin(VALID_PAYMENT_METHOD), F.lit("invalid_payment_method"))
          .otherwise(F.lit("unknown_payment_error"))
     )
     .withColumn("error_severity", F.lit("HIGH"))
@@ -52,7 +63,9 @@ valid_payments = (
         F.col("claim_id").isNotNull() &
         F.col("payment_amount").isNotNull() &
         (F.col("payment_amount") >= 0) &
-        F.col("payment_date").isNotNull()
+        F.col("payment_date").isNotNull() &
+        F.col("payment_status").isin(VALID_PAYMENT_STATUS_LOWER) &
+        F.col("payment_method").isin(VALID_PAYMENT_METHOD)
     )
     .dropDuplicates(["payment_id"])
 )

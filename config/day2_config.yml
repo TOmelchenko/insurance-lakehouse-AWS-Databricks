@@ -1,0 +1,28 @@
+catalog: insurance_lakehouse
+
+schemas:
+  bronze: bronze
+  silver: silver
+  quarantine: quarantine
+
+tables:
+  staging_bronze_customers: raw_customers
+  staging_bronze_policies: raw_policies
+  staging_bronze_claims: raw_claims
+  staging_bronze_payments: raw_payments
+  staging_bronze_agents: raw_agents
+  staging_bronze_fraud_indicators: raw_fraud_indicators
+
+  bronze_customers: bronze_customers
+  bronze_policies: bronze_policies
+  bronze_claims: bronze_claims
+  bronze_payments: bronze_payments
+  bronze_agents: bronze_agents
+  bronze_fraud_indicators: bronze_fraud_indicators
+
+  silver_customers: silver_customers
+  silver_policies: silver_policies
+  silver_claims: silver_claims
+  silver_payments: silver_payments
+  silver_agents: silver_agents
+  silver_fraud_indicators: silver_fraud_indicators

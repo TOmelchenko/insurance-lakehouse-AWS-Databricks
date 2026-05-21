@@ -15,9 +15,12 @@ This project processes personal data for German insurance customers and falls un
 
 | Field | PII Type | Sensitivity | Treatment |
 |---|---|---|---|
+| `first_name` | Direct identifier | HIGH | Dropped at silver (`pii_config.yml`) |
+| `last_name` | Direct identifier | HIGH | Dropped at silver (`pii_config.yml`) |
 | `email` | Direct identifier | HIGH | Hashed (SHA-256), original dropped at silver |
 | `phone_number` | Direct identifier | HIGH | Hashed (SHA-256), original dropped at silver |
 | `street` | Direct identifier | HIGH | Dropped at silver |
+| `postal_code` | Quasi-identifier | MEDIUM | Dropped at silver (`pii_config.yml`) |
 | `date_of_birth` | Quasi-identifier | MEDIUM | Retained, used to derive `customer_age` |
 | `customer_id` | Internal identifier | LOW | Hashed for traceability |
 | `city` | Quasi-identifier | LOW | Retained, normalized |
@@ -89,10 +92,12 @@ All hashing uses **SHA-256** via `F.sha2(col, 256)`. This is a one-way hash - or
 At the silver layer, the following fields are permanently removed from the `silver_customers` table:
 
 ```python
-.drop("email", "phone_number", "street")
+.drop("first_name", "last_name", "email", "phone_number", "street", "postal_code")
 ```
 
 These fields remain in `bronze_customers` which is access-restricted. Analysts working on silver and gold layers never see raw PII.
+
+Fields dropped per `pii_config.yml` (`exclude_from_gold`): `first_name`, `last_name`, `email`, `phone_number`, `street`, `postal_code`.
 
 ---
 
@@ -191,6 +196,28 @@ Error categories include:
 - `invalid_premium_amount` - negative or null financial value
 - `missing_claim_date` - incomplete claim record
 - `invalid_risk_score` - score outside 0-100 range
+- `invalid_policy_status` - value not in `[active, cancelled, expired]`
+- `invalid_policy_type` - value not in `[car, home, health, travel, liability]`
+- `invalid_claim_status` - value not in `[open, approved, rejected, under_review, paid]`
+- `invalid_payment_status` - value not in `[paid, pending, rejected]`
+- `invalid_payment_method` - value not in `[SEPA, bank_transfer, card]`
+
+---
+
+## Data Quality Rules
+
+Valid value constraints are defined in `quality_rules.yml` and enforced at the silver layer. Records with values outside these lists are routed to quarantine.
+
+| Dataset | Field | Valid Values |
+|---|---|---|
+| Policies | `policy_status` | `active`, `cancelled`, `expired` |
+| Policies | `policy_type` | `car`, `home`, `health`, `travel`, `liability` |
+| Claims | `claim_status` | `open`, `approved`, `rejected`, `under_review`, `paid` |
+| Payments | `payment_status` | `paid`, `pending`, `rejected` |
+| Payments | `payment_method` | `SEPA`, `bank_transfer`, `card` |
+| Fraud Indicators | `risk_score` | 0-100 (min/max range) |
+
+All string fields are lowercased and trimmed before validation to avoid case-sensitivity failures.
 
 ---
 

@@ -3,8 +3,6 @@
 # [tool.databricks.environment]
 # environment_version = "1"
 # ///
-# Week 11 Day 2 — Silver Customers starter template
-
 from pyspark.sql import functions as F
 
 CATALOG = "insurance_lakehouse"
@@ -53,7 +51,8 @@ valid_customers = (
     customers_prepared
     .filter(F.col("customer_id").isNotNull() & F.col("gdpr_consent").isNotNull())
     .dropDuplicates(["customer_id"])
-    .drop("email", "phone_number", "street")
+    # drop all pii_fields per pii_config.yml
+    .drop("first_name", "last_name", "email", "phone_number", "street", "postal_code")
 )
 
 valid_customers.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(silver_table)

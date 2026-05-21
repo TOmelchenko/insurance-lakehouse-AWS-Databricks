@@ -1,0 +1,21 @@
+pii_fields:
+  - first_name
+  - last_name
+  - email
+  - phone_number
+  - street
+  - postal_code
+  - date_of_birth
+  - iban_hash
+
+hash_fields:
+  - email
+  - phone_number
+
+exclude_from_gold:
+  - first_name
+  - last_name
+  - email
+  - phone_number
+  - street
+  - postal_code
