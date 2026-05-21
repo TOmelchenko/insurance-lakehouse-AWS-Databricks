@@ -194,13 +194,66 @@ Error categories include:
 - `missing_customer_id` - record cannot be linked to a customer
 - `invalid_gdpr_consent` - consent not confirmed, GDPR requirement
 - `invalid_premium_amount` - negative or null financial value
+- `coverage_not_greater_than_premium` - coverage must exceed premium
 - `missing_claim_date` - incomplete claim record
+- `invalid_claim_amount` - claim amount must be greater than 0
 - `invalid_risk_score` - score outside 0-100 range
 - `invalid_policy_status` - value not in `[active, cancelled, expired]`
 - `invalid_policy_type` - value not in `[car, home, health, travel, liability]`
 - `invalid_claim_status` - value not in `[open, approved, rejected, under_review, paid]`
 - `invalid_payment_status` - value not in `[paid, pending, rejected]`
 - `invalid_payment_method` - value not in `[SEPA, bank_transfer, card]`
+- `customer_id_not_in_silver_customers` - foreign key violation
+- `policy_id_not_in_silver_policies` - foreign key violation
+- `claim_id_not_in_silver_claims` - foreign key violation
+- `payment_date_before_claim_date` - business logic violation
+
+---
+
+## Foreign Key Validation
+
+Silver layer enforces referential integrity across datasets. A record that cannot be linked to a trusted parent is not analytically reliable and is routed to quarantine.
+
+| Dataset | Foreign Key | Must Exist In | Quarantine Reason |
+|---|---|---|---|
+| Policies | `customer_id` | `silver_customers` | `customer_id_not_in_silver_customers` |
+| Claims | `policy_id` | `silver_policies` | `policy_id_not_in_silver_policies` |
+| Claims | `customer_id` | `silver_customers` | `customer_id_not_in_silver_customers` |
+| Payments | `claim_id` | `silver_claims` | `claim_id_not_in_silver_claims` |
+| Payments | `payment_date` | `silver_claims.claim_date` | `payment_date_before_claim_date` |
+
+Implementation uses Spark `left_anti` joins - records that fail the join are captured and routed to quarantine with full error context, not silently dropped.
+
+```python
+# example - policies with no matching customer
+invalid_fk = field_valid.join(
+    silver_customers.select("customer_id"),
+    on="customer_id",
+    how="left_anti"
+)
+```
+
+---
+
+## Gold Exposure Policy
+
+Gold outputs are the final consumer-facing layer and must never expose individual-level personal data. The following rules apply to all Gold tables and dashboards.
+
+**What is allowed in Gold:**
+- Aggregated counts, sums, averages grouped by region, product, or time period
+- Anonymized risk scores and fraud summaries without individual identifiers
+- Agent performance KPIs without customer-level detail
+- Derived fields such as `customer_age`, `policy_duration_days`, `risk_category`
+- Hashed identifiers (`customer_hash`, `email_hash`) only when needed for joining - never for display
+
+**What is never allowed in Gold:**
+- `first_name`, `last_name`, `email`, `phone_number`, `street`, `postal_code` - defined in `pii_config.yml` as `exclude_from_gold`
+- Raw `customer_id` linked to personal attributes
+- Individual claim or payment records without aggregation
+- Any field that could re-identify a customer when combined with other fields
+
+**Consent gate:**
+All Gold outputs that involve customer data must be derived from `silver_customers` which already excludes non-consenting records. No additional consent filtering is required at Gold if the Silver join is used correctly.
 
 ---
 
