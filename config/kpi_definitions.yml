@@ -1,0 +1,5 @@
+kpis:
+  total_claims: count of claims
+  premium_revenue: sum of premium_amount
+  claims_ratio: total_claim_amount / premium_revenue
+  fraud_risk_rate: high_risk_claims / total_claims

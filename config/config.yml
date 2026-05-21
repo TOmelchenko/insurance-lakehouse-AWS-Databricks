@@ -4,6 +4,7 @@ schemas:
   bronze: bronze
   silver: silver
   quarantine: quarantine
+  gold: gold
 
 tables:
   staging_bronze_customers: raw_customers
@@ -26,3 +27,9 @@ tables:
   silver_payments: silver_payments
   silver_agents: silver_agents
   silver_fraud_indicators: silver_fraud_indicators
+
+  risk_bands:
+    low_max: 29
+    medium_min: 30
+    medium_max: 69
+    high_min: 70

@@ -13,9 +13,9 @@ PROJECT_NAME = "insurance-lakehouse-databricks-aws"
 COMPANY_NAME = "Rheinland Versicherung AG"
 DATA_MODE = "test"
 
-S3_BUCKET = "s3://insurance-lakehouse-project"
-RAW_BASE_PATH = f"{S3_BUCKET}/raw"
-CHECKPOINTS_PATH = f"{S3_BUCKET}/checkpoints"
+#S3_BUCKET = "s3://insurance-lakehouse-project"
+#RAW_BASE_PATH = f"{S3_BUCKET}/raw"
+#CHECKPOINTS_PATH = f"{S3_BUCKET}/checkpoints"
 
 CATALOG_NAME = "insurance_lakehouse"
 BRONZE_SCHEMA = "bronze"
