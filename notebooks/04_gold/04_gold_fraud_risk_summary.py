@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # 19 — Gold Fraud Risk Summary
-# MAGIC
-# MAGIC Week 11 Day 3 — Gold Analytics, Insurance KPIs, AI-Ready Features, and Performance.
-# MAGIC
-# MAGIC Replace catalog/schema names if your environment uses different names.
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 
@@ -70,4 +61,3 @@ gold_fraud_risk_summary = (
 
 gold_fraud_risk_summary.write.mode("overwrite").format("delta").option("overwriteSchema", "true").saveAsTable(t(GOLD_SCHEMA, "gold_fraud_risk_summary"))
 display(gold_fraud_risk_summary.limit(20))
-

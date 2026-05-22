@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # 18 — Gold Claims Payment Summary
-# MAGIC
-# MAGIC Week 11 Day 3 — Gold Analytics, Insurance KPIs, AI-Ready Features, and Performance.
-# MAGIC
-# MAGIC Replace catalog/schema names if your environment uses different names.
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 
@@ -65,4 +56,3 @@ gold_claims_payment_summary = (
 
 gold_claims_payment_summary.write.mode("overwrite").format("delta").option("overwriteSchema", "true").saveAsTable(t(GOLD_SCHEMA, "gold_claims_payment_summary"))
 display(gold_claims_payment_summary.limit(20))
-

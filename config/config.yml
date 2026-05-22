@@ -28,6 +28,22 @@ tables:
   silver_agents: silver_agents
   silver_fraud_indicators: silver_fraud_indicators
 
+  gold_claims_overview: gold_claims_overview
+  gold_policy_performance: gold_policy_performance
+  gold_customer_risk_profile: gold_customer_risk_profile
+  gold_claims_payment_summary: gold_claims_payment_summary
+  gold_fraud_risk_summary: gold_fraud_risk_summary
+  gold_agent_performance: gold_agent_performance
+  gold_claim_fraud_features: gold_claim_fraud_features
+
+  dashboard_views:
+  vw_executive_insurance_overview: vw_executive_insurance_overview
+  vw_claims_operations: vw_claims_operations
+  vw_policy_portfolio: vw_policy_portfolio
+  vw_fraud_risk_monitoring: vw_fraud_risk_monitoring
+  vw_agent_regional_performance: vw_agent_regional_performance
+  vw_data_quality_monitoring: vw_data_quality_monitoring
+
   risk_bands:
     low_max: 29
     medium_min: 30

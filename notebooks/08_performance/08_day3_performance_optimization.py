@@ -33,4 +33,3 @@ try:
 except Exception as e:
     print("OPTIMIZE was not available or failed in this environment.")
     print(str(e)[:500])
-

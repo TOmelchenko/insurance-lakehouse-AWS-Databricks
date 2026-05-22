@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # 21 — Gold Claim Fraud Features
-# MAGIC
-# MAGIC Week 11 Day 3 — Gold Analytics, Insurance KPIs, AI-Ready Features, and Performance.
-# MAGIC
-# MAGIC Replace catalog/schema names if your environment uses different names.
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 
@@ -90,4 +81,3 @@ assert duplicate_count == 0, "Grain violation: duplicate claim_id found in gold_
 
 gold_claim_fraud_features.write.mode("overwrite").format("delta").option("overwriteSchema", "true").saveAsTable(t(GOLD_SCHEMA, "gold_claim_fraud_features"))
 display(gold_claim_fraud_features.limit(20))
-

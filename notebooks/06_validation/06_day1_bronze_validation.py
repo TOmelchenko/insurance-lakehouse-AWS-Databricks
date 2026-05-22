@@ -4,7 +4,7 @@
 # environment_version = "1"
 # ///
 # MAGIC %md
-# MAGIC # 09 — Day 1 Bronze Validation
+# MAGIC #Day 1 Bronze Validation
 
 # COMMAND ----------
 

@@ -1,13 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # 20 — Gold Agent Performance
-# MAGIC
-# MAGIC Week 11 Day 3 — Gold Analytics, Insurance KPIs, AI-Ready Features, and Performance.
-# MAGIC
-# MAGIC Replace catalog/schema names if your environment uses different names.
-
-# COMMAND ----------
-
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 
@@ -85,4 +76,3 @@ gold_agent_performance = (
 
 gold_agent_performance.write.mode("overwrite").format("delta").option("overwriteSchema", "true").saveAsTable(t(GOLD_SCHEMA, "gold_agent_performance"))
 display(gold_agent_performance.limit(20))
-

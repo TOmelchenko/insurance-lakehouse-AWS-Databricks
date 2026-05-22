@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 22 — Day 3 Gold Validation
+# MAGIC #Day 3 Gold Validation
 # MAGIC
 # MAGIC Week 11 Day 3 — Gold Analytics, Insurance KPIs, AI-Ready Features, and Performance.
 # MAGIC
@@ -43,4 +43,3 @@ for table, grain_cols in gold_tables:
 validation_df = spark.createDataFrame(results, ["table_name", "row_count", "grain_columns", "duplicate_grain_count"])
 display(validation_df)
 validation_df.write.mode("overwrite").format("delta").saveAsTable(t(GOLD_SCHEMA, "gold_day3_validation_summary"))
-

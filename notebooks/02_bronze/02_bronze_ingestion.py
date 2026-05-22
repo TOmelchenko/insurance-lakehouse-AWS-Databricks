@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # 03 — Bronze Ingestion: Customers
+# MAGIC # 02 — Bronze Ingestion: Customers
 
 # COMMAND ----------
 

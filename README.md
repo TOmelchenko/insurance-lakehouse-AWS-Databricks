@@ -13,16 +13,20 @@ The fictional company is **Rheinland Versicherung AG**. The dataset covers custo
 ## Architecture
 
 ```
-Raw synthetic data
-      ↓
-  Bronze layer      - raw arrival, ingestion metadata, no transformations
-      ↓
-  Silver layer      - cleaned, validated, quarantined, PII-handled
-      ↓
-  Gold layer        - KPIs, fraud analytics, AI-ready features
+Synthetic data generation (Databricks Serverless)
+        ↓
+S3 raw CSV files  (s3://insurance-lakehouse-project/raw/)
+        ↓
+Autoloader (cloudFiles)  - incremental ingestion with checkpoints
+        ↓
+Bronze layer      - raw arrival, ingestion metadata, no transformations
+        ↓
+Silver layer      - cleaned, validated, quarantined, PII-handled
+        ↓
+Gold layer        - KPIs, fraud analytics, AI-ready features
 ```
 
-**Infrastructure:** Databricks Unity Catalog on AWS, S3 managed storage, Serverless compute, Delta format throughout.
+**Infrastructure:** Databricks Unity Catalog on AWS, S3 external location via CloudFormation, Serverless compute, Delta format throughout.
 
 ---
 
@@ -31,7 +35,8 @@ Raw synthetic data
 ```
 notebooks/
   01_project_setup/
-  02_generate_data/         - synthetic data generation
+  01_generate_synthetic_insurance_data  - generates data, writes CSV to S3
+  02_bronze_ingestion                   - Autoloader ingestion from S3 to bronze Delta
   03_silver/
     09_silver_customers
     10_silver_policies
@@ -57,6 +62,10 @@ config/
   pii_config.yml             - PII fields, hash fields, gold exclusions
 docs/
   day2_gdpr_pii_handling.md
+
+S3 bucket: s3://insurance-lakehouse-project/
+  raw/                       - source CSV files per dataset
+  checkpoints/               - Autoloader checkpoint location per dataset
 ```
 
 ---
@@ -71,6 +80,38 @@ docs/
 | payments | Settlement payments per claim |
 | agents | Broker/agent profiles and commission rates |
 | fraud_indicators | Risk scores and fraud flag features per claim |
+
+---
+
+## Bronze ingestion
+
+Synthetic data is generated as CSV files and written directly to S3. Bronze ingestion uses **Databricks Autoloader** (`cloudFiles`) to load those files incrementally into Delta tables.
+
+**How it works:**
+- Autoloader monitors `s3://insurance-lakehouse-project/raw/{dataset}/`
+- Checkpoints stored at `s3://insurance-lakehouse-project/checkpoints/{dataset}/`
+- Each new file is processed exactly once - already-processed files are skipped
+- `trigger(availableNow=True)` makes it run as a one-shot batch rather than a continuous stream
+
+**Schema hints** are required for boolean fields that CSV reads as strings:
+
+| Dataset | Boolean fields |
+|---|---|
+| customers | `gdpr_consent` |
+| claims | `fraud_flag` |
+| agents | `active_flag` |
+| fraud_indicators | `suspicious_amount_flag`, `duplicate_claim_flag`, `late_report_flag`, `high_risk_region_flag` |
+
+**Run modes:**
+
+`FULL_RELOAD = True` - clears checkpoints and truncates bronze tables before ingesting. Used when regenerating all synthetic data from scratch.
+
+`FULL_RELOAD = False` - incremental mode. Autoloader picks up only new files. Bronze tables accumulate data across runs.
+
+**Audit columns added at ingestion:**
+- `ingest_timestamp` - when the record was loaded
+- `ingest_run_id` - UUID linking all records from the same pipeline run
+- `source_file_name` - S3 path of the source file (`_metadata.file_path`)
 
 ---
 
@@ -142,7 +183,8 @@ Defined in `pii_config.yml`. Applied at the silver layer.
 ## Tech stack
 
 - **Compute:** Databricks Serverless + Unity Catalog
-- **Storage:** AWS S3 (managed via Unity Catalog external location)
+- **Storage:** AWS S3 (external location set up via AWS CloudFormation)
+- **Ingestion:** Databricks Autoloader (`cloudFiles`) with S3 checkpoints
 - **Format:** Delta Lake throughout
 - **Language:** PySpark (Python 3)
 - **Config:** YAML for quality rules and PII definitions
