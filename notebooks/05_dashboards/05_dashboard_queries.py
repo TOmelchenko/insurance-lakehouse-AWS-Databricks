@@ -1,7 +1,6 @@
 # Databricks notebook source
-
 # MAGIC %md
-# MAGIC # 25 — Dashboard Queries
+# MAGIC # Dashboard Queries
 # MAGIC Preview each dashboard view.
 
 # COMMAND ----------
@@ -218,4 +217,3 @@ for view in views:
 # MAGIC FROM insurance_lakehouse.gold.vw_data_quality_monitoring
 # MAGIC GROUP BY source_table
 # MAGIC ORDER BY total_quarantined DESC
-

@@ -1,7 +1,6 @@
 # Databricks notebook source
-
 # MAGIC %md
-# MAGIC # 24 — Dashboard Views
+# MAGIC # Dashboard Views
 # MAGIC Create final dashboard-ready SQL views. Use Gold tables as inputs and avoid raw PII.
 
 # COMMAND ----------
@@ -162,4 +161,3 @@ for view in [
 ]:
     count = spark.table(f"{catalog}.{gold_schema}.{view}").count()
     print(f"  {view} - {count} rows")
-

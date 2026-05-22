@@ -34,34 +34,58 @@ Gold layer        - KPIs, fraud analytics, AI-ready features
 
 ```
 notebooks/
-  01_project_setup/
-  01_generate_synthetic_insurance_data  - generates data, writes CSV to S3
-  02_bronze_ingestion                   - Autoloader ingestion from S3 to bronze Delta
+  00_setup/
+    00_project_setup
+  01_data_generation/
+    01_generate_synthetic_insurance_data    - generates temp views
+    01_generate_synthetic_insurance_data_s3 - writes CSV files to S3
+  02_bronze/
+    02_bronze_ingestion                     - basic batch ingestion
+    02_bronze_ingestion_s3                  - S3 batch ingestion
+    02_bronze_ingestion_s3_autoloader       - Autoloader incremental ingestion
   03_silver/
-    09_silver_customers
-    10_silver_policies
-    11_silver_claims
-    12_silver_payments
-    13_silver_agents
-    14_silver_fraud_indicators
-  05_quality/
-    15_data_quality_summary
-    16_quarantine_review
+    03_silver_customers
+    03_silver_policies
+    03_silver_claims
+    03_silver_payments
+    03_silver_agents
+    03_silver_fraud_indicators
+  04_gold/
+    04_gold_claims_overview
+    04_gold_policy_performance
+    04_gold_customer_risk_profile
+    04_gold_claims_payment_summary
+    04_gold_fraud_risk_summary
+    04_gold_agent_performance
+    04_gold_claim_fraud_features
+  05_dashboards/
+    05_dashboard_views                      - creates SQL views on gold tables
+    05_dashboard_queries                    - preview queries per view
+  06_validation/
+    06_day1_bronze_validation
+    06_day2_silver_validation
+    06_day3_gold_validation
+    06_final_validation
   07_governance/
-    17_gdpr_pii_handling
-  gold/
-    15_gold_claims_overview
-    16_gold_policy_performance
-    17_gold_customer_risk_profile
-    18_gold_claims_payment_summary
-    19_gold_fraud_risk_summary
-    20_gold_agent_performance
-    21_gold_claim_fraud_features
+    07_governance_gdpr_final_design
+  08_performance/
 config/
-  quality_rules.yml          - valid values per field
-  pii_config.yml             - PII fields, hash fields, gold exclusions
+  config.yml
+  data_size_config.yml
+  kpi_definitions.yml
+  pii_config.yml
+  project_config.yml
+  quality_rules.yml
 docs/
-  day2_gdpr_pii_handling.md
+  data_dictionary.md
+  data_quality_report.md
+  gdpr_pii_handling.md
+  kpi_definitions.md
+  performance_notes.md
+  final_project_summary.md
+architecture/
+  lakehouse_design.md
+  s3_folder_design.md
 
 S3 bucket: s3://insurance-lakehouse-project/
   raw/                       - source CSV files per dataset
@@ -177,6 +201,85 @@ Defined in `pii_config.yml`. Applied at the silver layer.
 **Consent gate:** records where `gdpr_consent` is null are quarantined and excluded from all downstream tables.
 
 **Gold rule:** no raw personal identifiers in any gold output. Aggregated or pseudonymised only.
+
+---
+
+## AWS - Databricks connection setup
+
+This project uses a **Unity Catalog external location** to give Databricks Serverless compute access to S3. Direct credential-based access (`spark.conf.set`) does not work on Serverless - the external location approach is the correct and recommended method.
+
+### Prerequisites
+
+- Databricks workspace on AWS (created via AWS Marketplace)
+- Unity Catalog metastore assigned to the workspace
+- An S3 bucket in the same AWS region as your workspace (`us-east-2`)
+
+### Step 1 - Enable Unity Catalog
+
+1. Go to `https://accounts.cloud.databricks.com`
+2. Click **Catalog** in the left sidebar
+3. If no metastore exists for your region, click **Create metastore**
+4. Set the region to match your workspace (e.g. `us-east-2`)
+5. Go to **Workspaces**, click your workspace, and assign the metastore
+
+### Step 2 - Create the external location via Quickstart
+
+This is the easiest method - Databricks generates a CloudFormation stack that wires everything up automatically.
+
+1. Open your Databricks workspace
+2. Click **Catalog** in the left sidebar
+3. Click the **gear icon** at the top of the Catalog panel
+4. Click **External Locations**
+5. Click **Create external location > Quickstart**
+6. Fill in your S3 bucket name: `s3://your-bucket-name`
+7. Copy the pre-generated **Personal Access Token**
+8. Click the button to proceed to AWS Console
+
+### Step 3 - Create the CloudFormation stack
+
+AWS Console opens with a pre-filled CloudFormation form:
+
+1. Paste your Personal Access Token into the **Databricks Personal Access Token** field
+2. Confirm the bucket name and workspace URL are correct
+3. Scroll to the bottom and click **Create stack**
+4. Wait 1-2 minutes for the stack to complete
+
+The CloudFormation stack automatically creates:
+- An IAM role with S3 read/write permissions
+- An IAM instance profile
+- A bucket policy on your S3 bucket
+- The external location registration in Unity Catalog
+
+> **Important:** Make sure you are in the correct AWS region when creating the stack. The stack must be in the same region as your S3 bucket and Databricks workspace.
+
+### Step 4 - Validate the external location
+
+1. Go back to your Databricks workspace
+2. Catalog > gear icon > **External Locations**
+3. Click your external location
+4. Click **Test connection**
+
+All checks should pass: Read, Write, Delete, Assume Role, Self Assume Role, External ID Condition.
+
+### Step 5 - Verify S3 access from a notebook
+
+Once the external location is set up, Serverless compute accesses S3 automatically with no credentials in the notebook:
+
+```python
+# test write
+df = spark.createDataFrame([("test",)], ["value"])
+df.write.mode("overwrite").format("parquet").save("s3://your-bucket-name/test/")
+print("done")
+
+# test read
+dbutils.fs.ls("s3://your-bucket-name/")
+```
+
+### Why this works
+
+Serverless compute authenticates through Unity Catalog, not through Spark config or environment variables. When Serverless sees an `s3://` path that matches a registered external location, it automatically uses the IAM role attached to that location. No access keys, no secrets manager, no `spark.conf.set` needed.
+
+The external location is the link between the S3 path and the IAM role that has permission to access it.
 
 ---
 
