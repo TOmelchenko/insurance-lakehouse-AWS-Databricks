@@ -19,7 +19,7 @@ views = [
 
 for view in views:
     print(f"\nPreviewing {view}")
-    display(spark.table(f"{catalog}.{gold_schema}.{view}").limit(20))
+    display(spark.table(f"{catalog}.{gold_schema}.{view}"))
 
 # COMMAND ----------
 
