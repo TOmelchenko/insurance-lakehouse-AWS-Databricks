@@ -1,8 +1,4 @@
 # Databricks notebook source
-# /// script
-# [tool.databricks.environment]
-# environment_version = "5"
-# ///
 # MAGIC %md
 # MAGIC # 03 — Bronze Ingestion: Customers
 
@@ -11,6 +7,8 @@
 from pyspark.sql import functions as F
 import uuid
 
+S3_BUCKET = "s3a://insurance-lakehouse-project"
+RAW_BASE_PATH = f"{S3_BUCKET}/raw"
 CATALOG_NAME = "insurance_lakehouse"
 BRONZE_SCHEMA = "bronze"
 
@@ -22,16 +20,20 @@ datasets = ["customers", "policies", "claims", "payments", "agents", "fraud_indi
 results = []
 
 for name in datasets:
-    staging_table = f"{CATALOG_NAME}.{BRONZE_SCHEMA}.raw_{name}"
+    raw_path = f"{RAW_BASE_PATH}/{name}"
     bronze_table = f"{CATALOG_NAME}.{BRONZE_SCHEMA}.bronze_{name}"
 
-    raw_df = spark.table(staging_table)
+    print(f"\nIngesting {name}...")
+    print(f"Raw path: {raw_path}")
+    print(f"Bronze table: {bronze_table}")
+
+    raw_df = spark.read.option("header", True).option("inferSchema", True).csv(raw_path)
 
     bronze_df = (
         raw_df
         .withColumn("ingest_timestamp", F.current_timestamp())
         .withColumn("ingest_run_id", F.lit(ingest_run_id))
-        .withColumn("source_file_name", F.lit(staging_table))
+        .withColumn("source_file_name", F.input_file_name())
     )
 
     bronze_df.write.format("delta").mode("overwrite").saveAsTable(bronze_table)
@@ -41,15 +43,7 @@ for name in datasets:
     status = "PASS" if raw_count == bronze_count else "FAIL"
 
     print(f"{name} - raw: {raw_count}, bronze: {bronze_count}, status: {status}")
-    results.append((name, raw_count, bronze_count, status))
+    results.append((name, raw_path, bronze_table, raw_count, bronze_count, status))
 
-summary = spark.createDataFrame(results, ["dataset", "raw_count", "bronze_count", "status"])
+summary = spark.createDataFrame(results, ["dataset", "raw_path", "bronze_table", "raw_count", "bronze_count", "status"])
 display(summary)
-
-# COMMAND ----------
-
-df_test = spark.createDataFrame([("test",)], ["value"])
-df_test.write.mode("overwrite").csv("s3a://insurance-lakehouse-project/test/")
-print("done")
-
-
