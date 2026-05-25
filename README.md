@@ -1,125 +1,122 @@
-# Insurance Lakehouse - AWS Databricks
+# Insurance Lakehouse - Rheinland Versicherung AG
 
-End-to-end data engineering pipeline for a synthetic German insurance dataset. Built on Databricks Unity Catalog with AWS S3 as the storage backend, following a bronze-silver-gold medallion architecture.
-
----
-
-## Project context
-
-The fictional company is **Rheinland Versicherung AG**. The dataset covers customers, policies, claims, payments, agents, and fraud indicators across German federal states (Bundesländer). All data is synthetic and GDPR-aware.
+End-to-end data engineering pipeline for a synthetic German insurance company, built on Databricks Unity Catalog with AWS S3, following a bronze-silver-gold medallion architecture.
 
 ---
 
-## Architecture
+## Business context
+
+**Rheinland Versicherung AG** is a fictional German insurance company operating across 9 Bundesländer. The business faced three core data problems:
+
+- **Siloed data** - customer, policy, claims, payment, and agent data lived in separate systems with no unified view, making cross-domain analytics impossible
+- **No data quality gate** - raw data flowed directly into reporting with no validation, so invalid records, missing keys, and impossible dates reached analysts silently
+- **Fraud blind spot** - no systematic fraud risk scoring or regional fraud pattern monitoring across the portfolio
+
+This project builds a lakehouse that solves all three: unified data, enforced quality, and fraud analytics.
+
+---
+
+## Technology stack
+
+| Layer | Technology |
+|---|---|
+| Compute | Databricks Serverless + Unity Catalog |
+| Storage | AWS S3 (external location via CloudFormation) |
+| Ingestion | Databricks Autoloader (`cloudFiles`) |
+| Table format | Delta Lake |
+| Language | PySpark (Python 3) |
+| Configuration | YAML (`quality_rules.yml`, `pii_config.yml`) |
+| Infrastructure | AWS IAM, AWS CloudFormation, Databricks Unity Catalog |
+
+---
+
+## Architecture overview
 
 ```
 Synthetic data generation (Databricks Serverless)
         ↓
 S3 raw CSV files  (s3://insurance-lakehouse-project/raw/)
         ↓
-Autoloader (cloudFiles)  - incremental ingestion with checkpoints
+Autoloader (cloudFiles) - incremental ingestion with S3 checkpoints
         ↓
 Bronze layer      - raw arrival, ingestion metadata, no transformations
         ↓
-Silver layer      - cleaned, validated, quarantined, PII-handled
+Silver layer      - cleaned, validated, PII-handled, quarantine routing
         ↓
 Gold layer        - KPIs, fraud analytics, AI-ready features
-```
-
-**Infrastructure:** Databricks Unity Catalog on AWS, S3 external location via CloudFormation, Serverless compute, Delta format throughout.
-
----
-
-## Repository structure
-
-```
-notebooks/
-  00_setup/
-    00_project_setup
-  01_data_generation/
-    01_generate_synthetic_insurance_data    - generates temp views
-    01_generate_synthetic_insurance_data_s3 - writes CSV files to S3
-  02_bronze/
-    02_bronze_ingestion                     - basic batch ingestion
-    02_bronze_ingestion_s3                  - S3 batch ingestion
-    02_bronze_ingestion_s3_autoloader       - Autoloader incremental ingestion
-  03_silver/
-    03_silver_customers
-    03_silver_policies
-    03_silver_claims
-    03_silver_payments
-    03_silver_agents
-    03_silver_fraud_indicators
-  04_gold/
-    04_gold_claims_overview
-    04_gold_policy_performance
-    04_gold_customer_risk_profile
-    04_gold_claims_payment_summary
-    04_gold_fraud_risk_summary
-    04_gold_agent_performance
-    04_gold_claim_fraud_features
-  05_dashboards/
-    05_dashboard_views                      - creates SQL views on gold tables
-    05_dashboard_queries                    - preview queries per view
-  06_validation/
-    06_day1_bronze_validation
-    06_day2_silver_validation
-    06_day3_gold_validation
-    06_final_validation
-  07_governance/
-    07_governance_gdpr_final_design
-  08_performance/
-config/
-  config.yml
-  data_size_config.yml
-  kpi_definitions.yml
-  pii_config.yml
-  project_config.yml
-  quality_rules.yml
-docs/
-  data_dictionary.md
-  data_quality_report.md
-  gdpr_pii_handling.md
-  kpi_definitions.md
-  performance_notes.md
-  final_project_summary.md
-architecture/
-  lakehouse_design.md
-  s3_folder_design.md
-
-S3 bucket: s3://insurance-lakehouse-project/
-  raw/                       - source CSV files per dataset
-  checkpoints/               - Autoloader checkpoint location per dataset
+        ↓
+Dashboard layer   - 6 SQL views, Databricks Lakeview charts
 ```
 
 ---
 
-## Datasets
+## Data sources
 
-| Dataset | Description |
-|---|---|
-| customers | Customer demographics, consent, segment |
-| policies | Insurance products, premium, coverage, status |
-| claims | Claim events, amounts, types, fraud flag |
-| payments | Settlement payments per claim |
-| agents | Broker/agent profiles and commission rates |
-| fraud_indicators | Risk scores and fraud flag features per claim |
+Six synthetic datasets modelling a German insurance company:
+
+| Dataset | Rows (small) | Description |
+|---|---|---|
+| customers | 10,000 | Demographics, GDPR consent, customer segment |
+| policies | 25,000 | Insurance products, premium, coverage, status |
+| claims | 50,000 | Claim events, amounts, types, fraud flag |
+| payments | 50,000 | Settlement payments per claim |
+| agents | 1,000 | Broker profiles, commission rates, region |
+| fraud_indicators | 50,000 | Risk scores and fraud flags per claim |
 
 ---
 
-## Bronze ingestion
+## Data size modes
 
-Synthetic data is generated as CSV files and written directly to S3. Bronze ingestion uses **Databricks Autoloader** (`cloudFiles`) to load those files incrementally into Delta tables.
+The data generator supports four modes controlled by `DATA_MODE`:
 
-**How it works:**
-- Autoloader monitors `s3://insurance-lakehouse-project/raw/{dataset}/`
-- Checkpoints stored at `s3://insurance-lakehouse-project/checkpoints/{dataset}/`
-- Each new file is processed exactly once - already-processed files are skipped
-- `trigger(availableNow=True)` makes it run as a one-shot batch rather than a continuous stream
+| Mode | Customers | Claims | Payments | Fraud indicators | Partitions |
+|---|---|---|---|---|---|
+| `test` | 10 | 500 | 500 | 500 | 8 |
+| `small` | 10,000 | 50,000 | 50,000 | 50,000 | 8 |
+| `medium` | 500,000 | 5,000,000 | 5,000,000 | 5,000,000 | 128 |
+| `large` | 2,000,000 | 20,000,000 | 20,000,000 | 20,000,000 | 512 |
 
-**Schema hints** are required for boolean fields that CSV reads as strings:
+All validation, silver, and gold logic is mode-agnostic - only the row counts change.
 
-| Dataset | Boolean fields |
+---
+
+## S3 folder structure
+
+```
+s3://insurance-lakehouse-project/
+  raw/
+    customers/          - source CSV files for customers
+    policies/           - source CSV files for policies
+    claims/             - source CSV files for claims
+    payments/           - source CSV files for payments
+    agents/             - source CSV files for agents
+    fraud_indicators/   - source CSV files for fraud indicators
+  checkpoints/
+    customers/          - Autoloader checkpoint (tracks processed files)
+    policies/
+    claims/
+    payments/
+    agents/
+    fraud_indicators/
+```
+
+Checkpoints are stored in S3 so they survive cluster restarts and workspace changes. Once a file is recorded in the checkpoint, Autoloader never reprocesses it.
+
+---
+
+## Bronze layer
+
+Synthetic CSV data is written to S3 then loaded incrementally into Delta tables using **Databricks Autoloader** (`cloudFiles`).
+
+**Key design decisions:**
+
+- `trigger(availableNow=True)` - runs as a one-shot batch, not a continuous stream
+- `_metadata.file_path` used instead of `input_file_name()` - required for Unity Catalog
+- Schema hints required for all boolean fields (CSV reads them as strings)
+
+**Schema hints by dataset:**
+
+| Dataset | Boolean fields requiring hints |
 |---|---|
 | customers | `gdpr_consent` |
 | claims | `fraud_flag` |
@@ -128,14 +125,16 @@ Synthetic data is generated as CSV files and written directly to S3. Bronze inge
 
 **Run modes:**
 
-`FULL_RELOAD = True` - clears checkpoints and truncates bronze tables before ingesting. Used when regenerating all synthetic data from scratch.
-
-`FULL_RELOAD = False` - incremental mode. Autoloader picks up only new files. Bronze tables accumulate data across runs.
+- `FULL_RELOAD = True` - truncates bronze tables and clears checkpoints. Use when regenerating all synthetic data from scratch.
+- `FULL_RELOAD = False` - incremental mode. Autoloader picks up only new files. Validation compares rows added this run rather than total counts.
 
 **Audit columns added at ingestion:**
-- `ingest_timestamp` - when the record was loaded
-- `ingest_run_id` - UUID linking all records from the same pipeline run
-- `source_file_name` - S3 path of the source file (`_metadata.file_path`)
+
+| Column | Description |
+|---|---|
+| `ingest_timestamp` | When the record was loaded |
+| `ingest_run_id` | UUID linking all records from the same pipeline run |
+| `source_file_name` | S3 path of the source file |
 
 ---
 
@@ -143,41 +142,102 @@ Synthetic data is generated as CSV files and written directly to S3. Bronze inge
 
 Each silver notebook reads from bronze, applies cleaning and validation, routes invalid records to quarantine, and writes trusted Delta tables.
 
-**What silver does:**
-- Trims and standardises text fields
-- Casts dates and amounts to correct types
-- Validates primary keys, foreign keys, and valid value lists
-- Quarantines records that fail validation with a typed error reason
-- Hashes and drops PII fields per `pii_config.yml`
-- Enforces GDPR consent before any record reaches analytics
+**Cleaning steps:**
+- Text fields trimmed and normalised (`initcap` for names, `lower` for statuses)
+- Dates cast to correct types
+- Boolean fields cast explicitly
+- Derived fields added: `customer_age`, `policy_duration_days`, `risk_category`, `fraud_indicator_count`
 
-**Quarantine tables:** `quarantine_invalid_customers`, `quarantine_invalid_policies`, `quarantine_invalid_claims`, `quarantine_invalid_payments`
+**Validation rules:**
+- Primary key null checks
+- Foreign key validation using `left_anti` joins across policies, claims, and payments
+- Valid value enforcement per `quality_rules.yml`
+- Business logic checks: `coverage_amount > premium_amount`, `payment_date >= claim_date`, `claim_amount > 0`
+
+**PII handling per `pii_config.yml`:**
+- Dropped at silver: `first_name`, `last_name`, `email`, `phone_number`, `street`, `postal_code`
+- Hashed SHA-256: `email_hash`, `phone_hash`, `customer_hash`
+- GDPR consent enforced - records with null `gdpr_consent` quarantined and excluded from all downstream tables
+
+**Deduplication:**
+- Standard datasets: `dropDuplicates` on primary key
+- `fraud_indicators`: window function `row_number()` over `risk_score DESC` per `claim_id` - keeps highest-risk record, not an arbitrary one
+
+**Silver validation results (small mode):**
+
+| Dataset | Bronze | Silver | Quarantine | Status |
+|---|---|---|---|---|
+| customers | 10,000 | 10,000 | 0 | PASS |
+| policies | 25,000 | 25,000 | 0 | PASS |
+| claims | 50,000 | 50,000 | 0 | PASS |
+| payments | 50,000 | 27,494 | 22,506 | PASS |
+| agents | 1,000 | 1,000 | 0 | PASS |
+| fraud_indicators | 50,000 | 31,694 | 0* | REVIEW |
+
+*18,306 deduplicated by design - highest risk_score kept per claim_id.
 
 ---
 
 ## Gold layer
 
-| Table | Purpose | Grain |
-|---|---|---|
-| gold_claims_overview | Claims operations reporting | month + status + type + product + region |
-| gold_policy_performance | Portfolio and premium analytics | product + status + channel + region |
-| gold_customer_risk_profile | Customer-level risk summary | one row per customer |
-| gold_claims_payment_summary | Claim settlement reporting | one row per claim |
-| gold_fraud_risk_summary | Fraud monitoring by region and product | region + product + claim type + risk band |
-| gold_agent_performance | Broker/agent KPIs | one row per agent |
-| gold_claim_fraud_features | AI-ready fraud feature table | one row per claim |
+7 Gold tables built for business reporting and AI feature engineering. All one-row-per-entity tables validated for zero duplicate grain.
+
+| Table | Purpose | Grain | Rows |
+|---|---|---|---|
+| gold_claims_overview | Claims operations reporting | month + status + type + product + region | 30,189 |
+| gold_policy_performance | Portfolio and premium analytics | product + status + channel + region | 540 |
+| gold_customer_risk_profile | Customer-level risk summary | one row per customer | 10,000 |
+| gold_claims_payment_summary | Claim settlement reporting | one row per claim | 50,000 |
+| gold_fraud_risk_summary | Fraud monitoring by region and product | region + product + claim type + risk band | 810 |
+| gold_agent_performance | Broker/agent KPIs | one row per agent | 1,000 |
+| gold_claim_fraud_features | AI-ready fraud feature table | one row per claim | 50,000 |
 
 **Core KPIs:**
-- `total_claims` - count of claims
-- `premium_revenue` - sum of premium amounts
-- `claims_ratio` - total claim amount / premium revenue
-- `fraud_risk_rate` - high risk claims / total claims
+
+| KPI | Formula |
+|---|---|
+| `total_claims` | `count(*)` |
+| `premium_revenue` | `sum(premium_amount)` |
+| `claims_ratio` | `total_claim_amount / premium_revenue` |
+| `fraud_risk_rate` | `high_risk_claims / total_claims` |
+
+**Risk bands** used in fraud tables: `low` (score < 30), `medium` (30-69), `high` (>= 70).
 
 ---
 
-## Data quality rules
+## Dashboard layer
 
-Defined in `quality_rules.yml` and enforced at the silver layer:
+6 SQL views created on gold tables for Databricks Lakeview dashboards:
+
+| View | Source | Chart type |
+|---|---|---|
+| `vw_executive_insurance_overview` | gold_policy_performance | KPI tiles |
+| `vw_claims_operations` | gold_claims_overview | Line chart, bar chart, donut chart |
+| `vw_policy_portfolio` | gold_policy_performance | Bar chart, donut chart |
+| `vw_fraud_risk_monitoring` | gold_fraud_risk_summary | Bar chart |
+| `vw_agent_regional_performance` | gold_agent_performance | Bar chart |
+| `vw_data_quality_monitoring` | all quarantine tables | Bar chart |
+
+---
+
+## Data quality and quarantine
+
+Invalid records are never silently dropped. They are routed to dedicated quarantine tables with full error context.
+
+**Quarantine tables:** `quarantine_invalid_customers`, `quarantine_invalid_policies`, `quarantine_invalid_claims`, `quarantine_invalid_payments`
+
+**Quarantine schema:**
+
+| Column | Purpose |
+|---|---|
+| `record_id` | Primary key of the rejected record |
+| `source_table` | Which bronze table it came from |
+| `error_reason` | Typed validation failure (e.g. `payment_date_before_claim_date`) |
+| `error_severity` | HIGH / MEDIUM / LOW |
+| `quarantine_timestamp` | When it was quarantined |
+| `original_record_json` | Full original record for audit and debugging |
+
+**Valid value rules (quality_rules.yml):**
 
 | Field | Valid values |
 |---|---|
@@ -190,104 +250,135 @@ Defined in `quality_rules.yml` and enforced at the silver layer:
 
 ---
 
-## PII and GDPR
+## GDPR and governance
 
-Defined in `pii_config.yml`. Applied at the silver layer.
+**PII fields (pii_config.yml):**
 
-**Dropped at silver:** `first_name`, `last_name`, `email`, `phone_number`, `street`, `postal_code`
+| Field | Treatment |
+|---|---|
+| `first_name`, `last_name` | Dropped at silver |
+| `email`, `phone_number` | Hashed SHA-256, original dropped |
+| `street`, `postal_code` | Dropped at silver |
+| `date_of_birth` | Retained, used to derive `customer_age` only |
+| `iban_hash` | Pre-hashed at source |
+| `gdpr_consent` | Enforced - null = quarantine |
 
-**Hashed (SHA-256):** `email` → `email_hash`, `phone_number` → `phone_hash`, `customer_id` → `customer_hash`
+**Role-based access design:**
 
-**Consent gate:** records where `gdpr_consent` is null are quarantined and excluded from all downstream tables.
+| Layer | Access |
+|---|---|
+| Bronze | Data engineers only - contains raw PII |
+| Silver | Data analysts, data scientists - PII masked |
+| Gold | Business users, BI tools - aggregated only |
+| Quarantine | Data engineers, compliance team |
 
-**Gold rule:** no raw personal identifiers in any gold output. Aggregated or pseudonymised only.
+**GDPR article mapping:**
+
+| Article | Implementation |
+|---|---|
+| Art. 5 - Data minimisation | PII dropped or hashed at silver |
+| Art. 6 - Lawful basis | `gdpr_consent` enforced before analytics |
+| Art. 25 - Privacy by design | Masking applied at pipeline level |
+| Art. 30 - Records of processing | Audit columns on every table |
+| Art. 32 - Security | Unity Catalog role-based access |
 
 ---
 
-## AWS - Databricks connection setup
+## Performance considerations
 
-This project uses a **Unity Catalog external location** to give Databricks Serverless compute access to S3. Direct credential-based access (`spark.conf.set`) does not work on Serverless - the external location approach is the correct and recommended method.
+- **Column pruning** - only required columns selected before joins, reducing data carried through the execution plan
+- **Aggregate before join** - payments aggregated to one row per claim before joining to claims, preventing grain duplication
+- **Anti-join for FK validation** - `left_anti` join stops as soon as a non-match is found, more efficient than post-join filtering
+- **Window over dropDuplicates** - `row_number()` over `risk_score DESC` keeps the most meaningful record rather than an arbitrary one
+- **Photon** - `explain(True)` on `gold_claim_fraud_features` confirmed full Photon support, no fallback to standard Spark
+- **OPTIMIZE** - run on `gold_claim_fraud_features` to compact Delta files. For medium/large mode, add `ZORDER BY (claim_id, policy_id)`
+- **fillna scoped to numeric columns** - prevents string columns like `bundesland` being overwritten with `0`
+
+---
+
+## How to run the project
 
 ### Prerequisites
 
-- Databricks workspace on AWS (created via AWS Marketplace)
-- Unity Catalog metastore assigned to the workspace
-- An S3 bucket in the same AWS region as your workspace (`us-east-2`)
+- Databricks workspace on AWS with Unity Catalog enabled
+- S3 bucket in the same region as your workspace
+- External location set up via Databricks Quickstart + AWS CloudFormation (see below)
 
-### Step 1 - Enable Unity Catalog
+### AWS - Databricks connection setup
 
-1. Go to `https://accounts.cloud.databricks.com`
-2. Click **Catalog** in the left sidebar
-3. If no metastore exists for your region, click **Create metastore**
-4. Set the region to match your workspace (e.g. `us-east-2`)
-5. Go to **Workspaces**, click your workspace, and assign the metastore
+Serverless compute authenticates through Unity Catalog - direct credentials (`spark.conf.set`) do not work.
 
-### Step 2 - Create the external location via Quickstart
+1. In your workspace: **Catalog > gear icon > External Locations > Create external location > Quickstart**
+2. Enter your S3 bucket name and copy the pre-generated Personal Access Token
+3. Proceed to AWS Console - a CloudFormation form opens pre-filled
+4. Paste the token and click **Create stack** (takes 1-2 minutes)
+5. The stack creates the IAM role, instance profile, bucket policy, and registers the external location in Unity Catalog
+6. Back in Databricks: **External Locations > Test connection** - all checks should pass
 
-This is the easiest method - Databricks generates a CloudFormation stack that wires everything up automatically.
+> Make sure you are in the correct AWS region (matching your workspace and bucket) when creating the CloudFormation stack.
 
-1. Open your Databricks workspace
-2. Click **Catalog** in the left sidebar
-3. Click the **gear icon** at the top of the Catalog panel
-4. Click **External Locations**
-5. Click **Create external location > Quickstart**
-6. Fill in your S3 bucket name: `s3://your-bucket-name`
-7. Copy the pre-generated **Personal Access Token**
-8. Click the button to proceed to AWS Console
+### Run order
 
-### Step 3 - Create the CloudFormation stack
-
-AWS Console opens with a pre-filled CloudFormation form:
-
-1. Paste your Personal Access Token into the **Databricks Personal Access Token** field
-2. Confirm the bucket name and workspace URL are correct
-3. Scroll to the bottom and click **Create stack**
-4. Wait 1-2 minutes for the stack to complete
-
-The CloudFormation stack automatically creates:
-- An IAM role with S3 read/write permissions
-- An IAM instance profile
-- A bucket policy on your S3 bucket
-- The external location registration in Unity Catalog
-
-> **Important:** Make sure you are in the correct AWS region when creating the stack. The stack must be in the same region as your S3 bucket and Databricks workspace.
-
-### Step 4 - Validate the external location
-
-1. Go back to your Databricks workspace
-2. Catalog > gear icon > **External Locations**
-3. Click your external location
-4. Click **Test connection**
-
-All checks should pass: Read, Write, Delete, Assume Role, Self Assume Role, External ID Condition.
-
-### Step 5 - Verify S3 access from a notebook
-
-Once the external location is set up, Serverless compute accesses S3 automatically with no credentials in the notebook:
-
-```python
-# test write
-df = spark.createDataFrame([("test",)], ["value"])
-df.write.mode("overwrite").format("parquet").save("s3://your-bucket-name/test/")
-print("done")
-
-# test read
-dbutils.fs.ls("s3://your-bucket-name/")
+```
+00_setup/00_project_setup                    - create catalog and schemas
+01_data_generation/01_generate_...s3        - generate synthetic data, write to S3
+02_bronze/02_bronze_ingestion_s3_autoloader  - ingest from S3 to bronze Delta tables
+03_silver/03_silver_customers                - silver layer (run all 6)
+...
+03_silver/03_silver_fraud_indicators
+04_gold/04_gold_claims_overview              - gold layer (run all 7)
+...
+04_gold/04_gold_claim_fraud_features
+05_dashboards/05_dashboard_views             - create SQL views
+06_validation/06_final_validation            - validate all layers
 ```
 
-### Why this works
+### Full reload vs incremental
 
-Serverless compute authenticates through Unity Catalog, not through Spark config or environment variables. When Serverless sees an `s3://` path that matches a registered external location, it automatically uses the IAM role attached to that location. No access keys, no secrets manager, no `spark.conf.set` needed.
-
-The external location is the link between the S3 path and the IAM role that has permission to access it.
+```python
+# In 02_bronze_ingestion_s3_autoloader:
+FULL_RELOAD = True   # truncates tables + clears checkpoints - use for fresh data
+FULL_RELOAD = False  # incremental - only new S3 files processed
+```
 
 ---
 
-## Tech stack
+## Final outputs
 
-- **Compute:** Databricks Serverless + Unity Catalog
-- **Storage:** AWS S3 (external location set up via AWS CloudFormation)
-- **Ingestion:** Databricks Autoloader (`cloudFiles`) with S3 checkpoints
-- **Format:** Delta Lake throughout
-- **Language:** PySpark (Python 3)
-- **Config:** YAML for quality rules and PII definitions
+| Output | Location |
+|---|---|
+| 6 bronze Delta tables | `insurance_lakehouse.bronze.*` |
+| 6 silver Delta tables | `insurance_lakehouse.silver.*` |
+| 4 quarantine tables | `insurance_lakehouse.quarantine.*` |
+| 7 gold Delta tables | `insurance_lakehouse.gold.*` |
+| 6 dashboard SQL views | `insurance_lakehouse.gold.vw_*` |
+| Raw CSV files | `s3://insurance-lakehouse-project/raw/` |
+| Autoloader checkpoints | `s3://insurance-lakehouse-project/checkpoints/` |
+
+---
+
+## Lessons learned
+
+**Serverless + external location** - direct S3 credentials do not work on Serverless compute. Unity Catalog external location is the correct pattern. The CloudFormation Quickstart wires everything automatically - IAM role, bucket policy, and Unity Catalog registration in one step.
+
+**Schema hints are mandatory for Autoloader** - Autoloader infers CSV boolean values (`true`/`false`) as strings. Without explicit `cloudFiles.schemaHints`, every run throws `DELTA_MERGE_INCOMPATIBLE_DATATYPE` when writing to an existing Delta table with a boolean schema.
+
+**Aggregate before join** - joining raw payments directly to claims multiplied rows because payments has multiple records per claim. Always reduce one-to-many tables to one row per grain before the final join.
+
+**Window function over dropDuplicates** - `dropDuplicates` picks an arbitrary row when deduplicating. `row_number()` over `risk_score DESC` keeps the most meaningful record per claim in `fraud_indicators`.
+
+**fillna scope matters** - applying `fillna(0)` to all columns corrupts string columns like `bundesland` and `agent_name`. Always scope `fillna` to numeric columns only.
+
+**AWS region alignment** - CloudFormation stacks, S3 buckets, and Databricks workspaces must all be in the same region. A mismatch is silent and causes confusing access errors.
+
+---
+
+## Future improvements
+
+- Scale to medium/large dataset mode (17M+ and 67M+ rows)
+- Add incremental silver processing - currently full overwrite per run
+- Train fraud detection model on `gold_claim_fraud_features` using Databricks MLflow
+- Expand Lakeview dashboards with additional pages and filters
+- Add data freshness monitoring and SLA alerting
+- Implement schema evolution handling for new source fields
+- Add dbt for gold layer transformations and documentation
