@@ -375,6 +375,7 @@ FULL_RELOAD = False  # incremental - only new S3 files processed
 
 ## Future improvements
 
+- Add tests
 - Scale to medium/large dataset mode (17M+ and 67M+ rows)
 - Add incremental silver processing - currently full overwrite per run
 - Train fraud detection model on `gold_claim_fraud_features` using Databricks MLflow
